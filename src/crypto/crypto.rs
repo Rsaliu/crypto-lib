@@ -8,6 +8,7 @@ use openssl::ec::{EcGroup, EcKey};
 use openssl::x509::{self, X509Name, X509Req, X509};
 use openssl::asn1::Asn1Time;
 use openssl::bn::{BigNum, MsbOption};
+use uuid::Uuid;
 
 #[derive(Debug,Default)]
 pub struct CryptoOp;
@@ -55,15 +56,12 @@ impl CryptoOp{
     pub async fn generate_token(&self,key_string:&str,payload:String)->Result<String, Box<dyn std::error::Error>>
     {
         let key = key_string.as_bytes();
-        let json_header=String::from(
-        r#"
+        let json_header=serde_json::json!(
                 {
                 "alg": "HS256",
-                "typ": "JWT"
-                }
-        
-        "#);
-        let json_header: serde_json::Value = serde_json::from_str(&json_header).expect("json error");
+                "typ": "JWT",
+                "jid": Uuid::new_v4().to_string(),
+                });
         let json_header = serde_json::to_string(&json_header).expect("json error");
         println!("trimmed json_header is: {json_header}");
         let json_header_encoded = URL_SAFE_NO_PAD.encode(json_header.as_bytes());
@@ -78,9 +76,11 @@ impl CryptoOp{
         let signature_string = URL_SAFE_NO_PAD.encode(signature);
         println!("Signature string: {:?}", signature_string);
         let token = format!("{full_payload}.{signature_string}");
-        Ok(token)
+        Ok(token.trim_matches('"').to_string())
 
     }
+
+
 
     pub async fn generate_hash(&self,input:String)->Result<String, Box<dyn std::error::Error>>
     {
