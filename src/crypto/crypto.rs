@@ -8,6 +8,7 @@ use openssl::ec::{EcGroup, EcKey};
 use openssl::x509::{self, X509Name, X509Req, X509};
 use openssl::asn1::Asn1Time;
 use openssl::bn::{BigNum, MsbOption};
+use serde::{de::Error, Deserialize, Serialize};
 use uuid::Uuid;
 use sha2::Sha256;
 use hmac::{Hmac, Mac};
@@ -16,11 +17,11 @@ type HmacSha256 = Hmac<Sha256>;
 #[derive(Debug,Default)]
 pub struct CryptoOp;
 
-#[derive(Debug,Default)]
+#[derive(Debug,Default,Serialize, Deserialize)]
 pub struct CertConfig{
-    pub(crate) cn:String,
-    pub(crate) root_ca: Vec<u8>,
-    pub(crate) server_key: Vec<u8>
+    pub cn:String,
+    pub root_ca: Vec<u8>,
+    pub  server_key: Vec<u8>
 }
 
 #[derive(Debug,Default)]
@@ -144,7 +145,7 @@ impl CryptoOp{
         Ok(csr)
     }
 
-    pub async fn generate_rsa_x509(&self,config:&CertConfig)->Result<ClientCredential, Box<dyn std::error::Error>>{
+    pub fn generate_rsa_x509(&self,config:&CertConfig)->Result<ClientCredential, Box<dyn std::error::Error>>{
         let pkey = self.generate_private_key()?;
         let x509_req = self.generate_csr(pkey.clone())?;
 

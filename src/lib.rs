@@ -93,7 +93,7 @@ mod tests {
 
 
         let crypto_op = crypto::crypto::CryptoOp::default();
-        let client_credential = crypto_op.generate_rsa_x509(&new_config).await.expect("x509 error");
+        let client_credential = crypto_op.generate_rsa_x509(&new_config).expect("x509 error");
         let client_cert_string = String::from_utf8_lossy(client_credential.get_cert());
         let client_key_string = String::from_utf8_lossy(client_credential.get_key());
         println!("client cert is: {:?}",client_cert_string);
