@@ -1,5 +1,5 @@
 use openssl::hash::{MessageDigest,Hasher};
-use openssl::sign::Signer;
+use openssl::sign::{Signer,Verifier};
 use serde_json;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -9,6 +9,9 @@ use openssl::x509::{self, X509Name, X509Req, X509};
 use openssl::asn1::Asn1Time;
 use openssl::bn::{BigNum, MsbOption};
 use uuid::Uuid;
+use sha2::Sha256;
+use hmac::{Hmac, Mac};
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug,Default)]
 pub struct CryptoOp;
@@ -55,29 +58,52 @@ impl CertConfig {
 impl CryptoOp{
     pub async fn generate_token(&self,key_string:&str,payload:String)->Result<String, Box<dyn std::error::Error>>
     {
+        println!("key string is: {}",key_string);
         let key = key_string.as_bytes();
         let json_header=serde_json::json!(
                 {
                 "alg": "HS256",
                 "typ": "JWT",
-                "jid": Uuid::new_v4().to_string(),
                 });
         let json_header = serde_json::to_string(&json_header).expect("json error");
         println!("trimmed json_header is: {json_header}");
         let json_header_encoded = URL_SAFE_NO_PAD.encode(json_header.as_bytes());
         let payload_encoded = URL_SAFE_NO_PAD.encode(payload);
         println!("encoded payload is: {payload_encoded}");
-        let pkey = openssl::pkey::PKey::hmac(key)?;
-        let mut signer = Signer::new(MessageDigest::sha256(), &pkey)?;
+        let mut mac = HmacSha256::new_from_slice(key_string.as_bytes())?;
+        //let pkey = openssl::pkey::PKey::hmac(key)?;
+        //let mut signer = Signer::new(MessageDigest::sha256(), &pkey)?;
         let full_payload= format!("{json_header_encoded}.{payload_encoded}");
-        signer.update(full_payload.as_bytes())?;
-        let signature = signer.sign_to_vec()?;
+        println!("ecoded header + data is:{}",full_payload);
+        mac.update(full_payload.as_bytes());
+        
+        let signature = mac.finalize().into_bytes();
         println!("Signature byte: {:?}", signature);
         let signature_string = URL_SAFE_NO_PAD.encode(signature);
         println!("Signature string: {:?}", signature_string);
         let token = format!("{full_payload}.{signature_string}");
         Ok(token.trim_matches('"').to_string())
+    }
 
+    pub async fn verify_token(&self,key_string:&str,payload:String)->Result<String, Box<dyn std::error::Error>>
+    {
+        println!("key string is: {}",key_string);
+        let splitted_string:Vec<&str> = payload.split('.').collect();
+        let encode_header = splitted_string[0].to_owned();
+        let encoded_data = splitted_string[1].to_owned();
+        let encoded_signature = splitted_string[2].to_owned();
+        println!("Signature string: {:?}", encoded_signature);
+        let decoded_signature = URL_SAFE_NO_PAD.decode(encoded_signature.as_bytes())?;
+        let mut mac = HmacSha256::new_from_slice(key_string.as_bytes())?;
+        println!("init verifier");
+        let msg = format!("{}.{}",encode_header,encoded_data);
+        println!("ecoded header + data is:{}",msg);
+        mac.update(msg.as_bytes());
+        mac.verify_slice(&decoded_signature)?;
+
+        let decoded_payload = URL_SAFE_NO_PAD.decode(encoded_data)?;
+        let decodec_payload = String::from_utf8_lossy(&decoded_payload);
+        Ok(decodec_payload.to_string())
     }
 
 

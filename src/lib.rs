@@ -6,30 +6,64 @@ pub fn add(left: usize, right: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use crypto::crypto::CertConfig;
-
+    use std::{env, str::FromStr};
     use super::*;
-    use std::env;
     use std::fs::File;
     use std::io::Read;
+    use std::panic;
+    use tokio::runtime::Runtime;
     use openssl::x509::{X509VerifyResult, X509};
     #[tokio::test]
     async fn test_token_generator() {
-        dotenvy::from_path(".env").expect("dot env error");
-        let key = env::var("HMAC_KEY").expect("env variable error");
+        let key = "randomkey".to_string();
         let crypto_op = crypto::crypto::CryptoOp::default();
-        let mut payload = String::from(
-        r#"
+        let payload = serde_json::json!(
             {
                 "username":"user"
-            }
-        "#);
-        let payload_json: serde_json::Value = serde_json::from_str(&payload).expect("json error");
-        payload = serde_json::to_string(&payload_json).expect("json error");
+            });
+        let payload = serde_json::to_string(&payload).expect("json error");
         println!("trimmed payload is: {payload}");
-        let token_string = crypto_op.generate_token(&key, payload).await.expect("token generation error");
+        let token_string = crypto_op.generate_token(&key, payload.clone()).await.expect("token generation error");
         println!("Token string is: {token_string}");
-        let expected_token = String::from("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InVzZXIifQ.INTydKglbIMNC-aOv-I41SyE1Tx0bpk_xW0-6vzL0NQ");
-        assert_eq!(token_string, expected_token);
+        let decoded_payload = crypto_op.verify_token(&key,token_string).await.expect("token verification error");
+        assert_eq!(payload, decoded_payload);
+    }
+
+    #[tokio::test]
+    #[should_panic]
+    async fn test_bad_token() {
+        let key = "randomkey".to_string();
+        let crypto_op = crypto::crypto::CryptoOp::default();
+        let payload = serde_json::json!(
+            {
+                "username":"user"
+            });
+        let payload = serde_json::to_string(&payload).expect("json error");
+        println!("trimmed payload is: {payload}");
+        let token_string = crypto_op.generate_token(&key, payload.clone()).await.expect("token generation error");
+        println!("Token string is: {token_string}");
+        let tampered_token = token_string+"a";
+        let decoded_payload = crypto_op.verify_token(&key,tampered_token).await.expect("token verification error");
+        assert_eq!(payload, decoded_payload);
+    }
+
+    #[tokio::test]
+    #[should_panic]
+    async fn test_bad_key() {
+        let key = "randomkey".to_string();
+        let crypto_op = crypto::crypto::CryptoOp::default();
+        let payload = serde_json::json!(
+            {
+                "username":"user"
+            });
+        let payload = serde_json::to_string(&payload).expect("json error");
+        println!("trimmed payload is: {payload}");
+        let token_string = crypto_op.generate_token(&key, payload.clone()).await.expect("token generation error");
+        println!("Token string is: {token_string}");
+        let mut tampered_key = String::from_str(&key).unwrap();
+        tampered_key.push_str("a");
+        let decoded_payload = crypto_op.verify_token(&tampered_key,token_string).await.expect("token verification error");
+        assert_eq!(payload, decoded_payload);
     }
 
     #[tokio::test]
